@@ -58,7 +58,7 @@ jobs:
       - name: Promote to main if build passes
         if: steps.check.outputs.no_update == 'false'
         run: |
-          git checkout main
+          git checkout -B main origin/main
           git merge staging --no-edit
           git push origin main
       - name: Trigger project update
