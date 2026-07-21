@@ -2,7 +2,7 @@ name: Sync Upstream & Test
 on:
   schedule:
     - cron: '0 */2 * * *'
-  workflow_dispatch:        # biar bisa juga di-trigger manual dari tab Actions
+  workflow_dispatch:
 jobs:
   sync:
     runs-on: ubuntu-latest
@@ -35,7 +35,18 @@ jobs:
         if: steps.check.outputs.no_update == 'false'
         run: |
           git merge upstream/main --no-edit
+
+      - name: Auto-fix pre-commit issues (kalau ada)
+        if: steps.check.outputs.no_update == 'false'
+        run: |
+          pip install pre-commit --quiet
+          pre-commit run --all-files || true
+          if ! git diff --quiet; then
+            git add -A
+            git commit -m "chore: auto-fix pre-commit issues"
+          fi
           git push origin staging
+
       - name: Setup Go
         if: steps.check.outputs.no_update == 'false'
         uses: actions/setup-go@v5
