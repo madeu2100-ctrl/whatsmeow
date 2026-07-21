@@ -1,60 +1,37 @@
-name: Sync Upstream & Test
-on:
-  schedule:
-    - cron: '0 */2 * * *'
-  workflow_dispatch:        # biar bisa juga di-trigger manual dari tab Actions
+name: Go
+
+on: [push, pull_request]
+
+env:
+  GOTOOLCHAIN: local
+
 jobs:
-  sync:
+  build:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        go-version: ["1.25", "1.26"]
+    name: Build ${{ matrix.go-version == '1.26' && '(latest)' || '(old)' }}
+
     steps:
-      - name: Checkout fork (branch staging)
-        uses: actions/checkout@v4
-        with:
-          ref: staging
-          fetch-depth: 0
-      - name: Add upstream remote
-        run: git remote add upstream https://github.com/tulir/whatsmeow.git
-      - name: Fetch upstream
-        run: git fetch upstream
-      - name: Check for new commits
-        id: check
-        run: |
-          LOCAL=$(git rev-parse staging)
-          REMOTE=$(git rev-parse upstream/main)
-          if [ "$LOCAL" == "$REMOTE" ]; then
-            echo "no_update=true" >> $GITHUB_OUTPUT
-          else
-            echo "no_update=false" >> $GITHUB_OUTPUT
-          fi
-      - name: Configure git identity
-        if: steps.check.outputs.no_update == 'false'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-      - name: Merge upstream into staging
-        if: steps.check.outputs.no_update == 'false'
-        run: |
-          git merge upstream/main --no-edit
-          git push origin staging
-      - name: Setup Go
-        if: steps.check.outputs.no_update == 'false'
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.22'
-      - name: Build test
-        if: steps.check.outputs.no_update == 'false'
-        run: go build ./...
-      - name: Promote to main if build passes
-        if: steps.check.outputs.no_update == 'false'
-        run: |
-          git checkout main
-          git merge staging --no-edit
-          git push origin main
-      - name: Trigger project update
-        if: steps.check.outputs.no_update == 'false'
-        run: |
-          curl -X POST \
-            -H "Authorization: token ${{ secrets.PROJECT_REPO_TOKEN }}" \
-            -H "Accept: application/vnd.github.v3+json" \
-            https://api.github.com/repos/madeu2100-ctrl/MDX-Back/dispatches \
-            -d '{"event_type":"whatsmeow-updated"}'
+    - uses: actions/checkout@v6
+
+    - name: Set up Go
+      uses: actions/setup-go@v6
+      with:
+        go-version: ${{ matrix.go-version }}
+
+    - name: Build
+      run: go build -v ./...
+
+    - name: Test
+      run: go test -v ./...
+
+    - name: Install goimports
+      run: |
+        go install golang.org/x/tools/cmd/goimports@latest
+        export PATH="$HOME/go/bin:$PATH"
+
+    - name: Run pre-commit
+      uses: pre-commit/action@v3.0.1
